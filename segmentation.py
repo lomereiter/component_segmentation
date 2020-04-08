@@ -211,7 +211,10 @@ def find_dividers(matrix: List[Path]) -> Tuple[pd.DataFrame, Set[int]]:
         # Stack up others using the same LinkColumn
 
     df = pd.concat(connection_dfs)
+    n_remaining_links = len(df)
+
     df = utils.sort_and_drop_duplicates(df)
+    n_uniq_links = len(df)
 
     # all start positions of components
     # (max_bin + 1) is end of pangenome
@@ -225,12 +228,9 @@ def find_dividers(matrix: List[Path]) -> Tuple[pd.DataFrame, Set[int]]:
         n_self_loops = np.unique(np.concatenate(self_loops), axis=0).shape[0]
         print(f"Eliminated {n_self_loops} self-loops")
 
-    n_uniq_links = df[df["to"] >= df["from"]]\
-        .drop(columns=["path_index"]).drop_duplicates().shape[0]
-
     n_links = sum([len(p.links) for p in matrix])
     print(f"Input has {n_links} listed Links.  "
-          f"Segmentation eliminated {(1-n_uniq_links/n_links)*100}% of them.")
+          f"Segmentation eliminated {(1-n_remaining_links/n_links)*100}% of them.")
     print(f"Found {n_uniq_links} unique links")
 
     return df, dividers
