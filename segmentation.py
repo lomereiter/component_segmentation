@@ -168,12 +168,15 @@ def find_dividers(matrix: List[Path]) -> Tuple[pd.DataFrame, Set[int]]:
     connection_dfs = []  # pandas dataframe with columns (from, to, path [name])
 
     for i, path in enumerate(matrix):
-        links = path.links
         bin_ids = np.array([b.bin_id for b in path.bins])
         bin_ids.sort()
 
         if bin_ids.size > 0:
             max_bin = max(max_bin, int(bin_ids[-1]))
+
+        links = path.links
+        if links.size == 0:
+            continue
 
         # we don't want these to become dividers
         boundary_mask = utils.path_boundaries(links)
