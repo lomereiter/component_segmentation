@@ -2,19 +2,19 @@
 
 from dataclasses import dataclass
 from typing import List
+from sortedcontainers import SortedDict
 
 ## Path is all for input files
 
 
 class Path:
     name: str
-    bins: 'List[Path.Bin]'
+    bins: 'SortedDict[int, Path.Bin]'
     links: 'numpy.array'
 
     def __init__(self, name=''):
         self.name = name
-        self.bins = []  # Bin
-        self._bin_set = set()
+        self.bins = SortedDict()
 
     @dataclass
     class Bin:
@@ -32,12 +32,7 @@ class Path:
             # TODO: self.insert_size will require a topology search to find this
 
     def __contains__(self, item):  # used by " x in Path "
-        return item in self._bin_set
-
-    def finalize_bins(self):
-        self._bin_set = {x.bin_id for x in self.bins}  # build and cache a set
-
-
+        return item in self.bins
 
 ## For Output to RDF  ###########
 @dataclass

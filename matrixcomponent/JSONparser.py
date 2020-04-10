@@ -7,6 +7,7 @@ from joblib import Parallel, delayed
 import matrixcomponent.matrix as matrix
 from matrixcomponent import ODGI_VERSION
 from itertools import islice
+from sortedcontainers import SortedDict
 
 import numpy as np
 
@@ -35,8 +36,10 @@ def process_path(line=None):
         p = matrix.Path(path['path_name'])
 
         for b in path['bins']:
-            p.bins.append(p.Bin(b[0], b[1], b[2], b[4], b[5]))
-        p.finalize_bins()
+            ranges = b[4]
+            if type(ranges) is not list and len(b) >= 6:
+                ranges = [[b[4], b[5]]]
+            p.bins[b[0]] = Bin(p.Bin(b[0], b[1], b[2], ranges))
 
         p.links = np.array(path['links'])
 

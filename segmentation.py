@@ -7,25 +7,28 @@ Component Segmentation Detection - Josiah and Joerg
   Python memory object model - Josiah
 Output format
 """
-from typing import List, Tuple, Set, Dict
-from pathlib import Path as osPath, PurePath
+
+import argparse
+import os
+import logging
+import sys
+
 from datetime import datetime
-from sortedcontainers import SortedDict
-from DNASkittleUtils.Contigs import Contig, read_contigs, write_contigs_to_file
+from pathlib import Path as osPath, PurePath
+from typing import List, Tuple, Set, Dict
+
+import matrixcomponent
+import matrixcomponent.JSONparser as JSONparser
+import matrixcomponent.ParquetLoader as ParquetLoader
+import matrixcomponent.utils as utils
 
 from matrixcomponent.matrix import Path, Component, LinkColumn, Bin
 from matrixcomponent.PangenomeSchematic import PangenomeSchematic
-import matrixcomponent.utils as utils
-
-import os
-import logging
-import argparse
-import matrixcomponent
-
-import matrixcomponent.JSONparser as JSONparser
 
 import numpy as np
 import pandas as pd
+
+from DNASkittleUtils.Contigs import Contig, read_contigs, write_contigs_to_file
 
 MAX_COMPONENT_SIZE = 100  # automatic calculation from cells_per_file did not go well
 LOGGER = logging.getLogger(__name__)
@@ -44,11 +47,10 @@ def populate_component_matrix(paths: List[Path], schematic: PangenomeSchematic):
     # the loops are 1) paths, and then 2) schematic.components
     # paths are in the same order as schematic.path_names
     for i, path in enumerate(paths):
-        sorted_bins = SortedDict((bin.bin_id, bin) for bin in path.bins)
-        values = list(sorted_bins.values())
+        values = list(path.bins.values())
         for component in schematic.components:
-            from_id = sorted_bins.bisect_left (component.first_bin)
-            to_id   = sorted_bins.bisect_right(component.last_bin)
+            from_id = path.bins.bisect_left (component.first_bin)
+            to_id   = path.bins.bisect_right(component.last_bin)
             relevant = values[from_id:to_id]
             padded = []
             if relevant:
@@ -168,8 +170,7 @@ def find_dividers(matrix: List[Path]) -> Tuple[pd.DataFrame, Set[int]]:
     connection_dfs = []  # pandas dataframe with columns (from, to, path [name])
 
     for i, path in enumerate(matrix):
-        bin_ids = np.array([b.bin_id for b in path.bins])
-        bin_ids.sort()
+        bin_ids = np.array(path.bins.keys())
 
         if bin_ids.size > 0:
             max_bin = max(max_bin, int(bin_ids[-1]))
@@ -236,12 +237,10 @@ def find_dividers(matrix: List[Path]) -> Tuple[pd.DataFrame, Set[int]]:
     return df, dividers
 
 
-def setup_logging():
+def setup_logging(output_folder):
     """Setup the logging, add a log file"""
-    log_name = osPath(args.json_file).with_suffix('.log')
-    if args.output_folder:
-        log_name = osPath(args.output_folder).joinpath('log')
-        os.makedirs(args.output_folder, exist_ok=True)
+    log_name = osPath(output_folder).joinpath('log')
+    os.makedirs(output_folder, exist_ok=True)
     t = datetime.now()
     timestr = f"{t.year}{t.month:02}{t.day:02}-{t.hour:02}-{t.minute:02}-{t.second:02}"
     log_name = str(log_name) + '.' + timestr + '.log'
@@ -265,9 +264,7 @@ class SmartFormatter(argparse.HelpFormatter):
 def write_json_files(json_file, schematic: PangenomeSchematic):
     partitions, bin2file_mapping = schematic.split(args.cells_per_file)
 
-    folder = osPath(json_file).parent
-    if args.output_folder:
-        folder = osPath(args.output_folder)
+    folder = osPath(args.output_folder)
     os.makedirs(folder, exist_ok=True)  # make directory for all files
 
     for part in partitions:
@@ -306,9 +303,14 @@ def get_arguments():
                     "--json-file=data/run1.B1phi1.i1.seqwish.w100.json --cells-per-file=5000 --fasta=data/run1.B1phi1.i1.seqwish.fasta")
 
     parser.add_argument('-j', '--json-file',
-                            dest='json_file',
-                            required=True,
-                            help='input JSON file')
+                        dest='json_file',
+                        required=False,
+                        help='input JSON file')
+
+    parser.add_argument('--parquet-dir',
+                        dest='parquet_dir',
+                        required=False,
+                        help='input directory with Parquet tables')
 
     parser.add_argument('-f', '--fasta',
                         dest='fasta',
@@ -338,12 +340,21 @@ def get_arguments():
                         help='Tip: do not set this one to more than available CPU cores)')
 
     args = parser.parse_args()
-    if not args.output_folder:
+
+    if not args.json_file and not args.parquet_dir:
+        print("error: one of --json-file or --parquet-dir must be provided")
+        sys.exit(1)
+    if args.parquet_dir and not args.output_folder:
+        print("error: --out-folder must be provided")
+        sys.exit(1)
+
+    if not args.output_folder and args.json_file:
         # directory with the same name as the json
         args.output_folder = osPath(args.json_file).parent.joinpath(osPath(args.json_file).stem)
     else:
         args.output_folder = osPath(args.output_folder)
     os.makedirs(args.output_folder, exist_ok=True)
+
 
     if (args.parallel_cores <= 0):
         args.parallel_cores = os.cpu_count()
@@ -354,9 +365,13 @@ def get_arguments():
 def main():
     global args
     args = get_arguments()
-    setup_logging()
-    LOGGER.info(f'reading {osPath(args.json_file)}...\n')
-    paths, pangenome_length, bin_width = JSONparser.parse(args.json_file, args.parallel_cores)
+    setup_logging(args.output_folder)
+    if args.json_file:
+        LOGGER.info(f'reading {osPath(args.json_file)}...\n')
+        paths, pangenome_length, bin_width = JSONparser.parse(args.json_file, args.parallel_cores)
+    elif args.parquet_dir:
+        LOGGER.info(f'reading {osPath(args.parquet_dir)}/...\n')
+        paths, pangenome_length, bin_width = ParquetLoader.load_parquet(args.parquet_dir)
     schematic = segment_matrix(paths, bin_width, args.cells_per_file, pangenome_length)
     del paths
     write_json_files(args.output_folder, schematic)
