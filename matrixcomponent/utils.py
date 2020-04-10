@@ -88,7 +88,7 @@ def sort_and_drop_duplicates(connections: 'pd.DataFrame', shift=21) -> 'pd.DataF
         return connections.drop_duplicates().sort_values(by=["from", "to", "path_index"])
 
     # the columns are assumed to be (from, to, path_index)
-    array = connections.to_numpy()
+    array = connections.to_numpy(dtype=np.uint64)
 
     # compress all columns into a single 64-bit integer
     compressed = (array[:, 0] << (2 * shift)) + (array[:, 1] << shift) + array[:, 2]

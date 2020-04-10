@@ -220,7 +220,7 @@ def find_dividers(matrix: List[Path]) -> Tuple[pd.DataFrame, Set[int]]:
     # all start positions of components
     # (max_bin + 1) is end of pangenome
     dividers = np.concatenate([[1, max_bin + 1], df["from"] + 1, df["to"]])
-    dividers = np.unique(dividers).tolist()
+    dividers = np.unique(dividers).astype(np.uint64).tolist()
 
     print(f"Largest bin_id was {max_bin}\n"
           f"Found {len(dividers)} dividers.")
